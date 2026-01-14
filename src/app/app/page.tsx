@@ -540,7 +540,6 @@ export default function AppPage() {
                   Добавить расход
                 </div>
                 <div className="mt-2 text-[14px] text-gray-500">
-                  Минималистичная форма ввода
                 </div>
               </div>
 
@@ -685,7 +684,6 @@ export default function AppPage() {
                   Добавить доход
                 </div>
                 <div className="mt-2 text-[14px] text-gray-500">
-                  Минималистичная форма ввода
                 </div>
               </div>
 
