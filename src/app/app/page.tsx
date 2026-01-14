@@ -1,10 +1,10 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type SelectHTMLAttributes } from "react";
 
 type TxType = "Расход" | "Доход";
 
-type Category =
+type ExpenseCategory =
   | "Операционные расходы"
   | "Маркетинг и реклама"
   | "Разработка и производство"
@@ -15,13 +15,28 @@ type Category =
   | "Инвестиционные расходы"
   | "Прочие расходы";
 
+type IncomeCategory =
+  | "Доход по основной деятельности"
+  | "Инвестиционных доход"
+  | "Доход от аренды"
+  | "Проценты по депозитам"
+  | "Доход (штрафы и компенсации)"
+  | "Одноразовый доход от продажи активов или оборудования"
+  | "Доход от проектных услуг";
+
 type Tx = {
   id: string;
   type: TxType;
   dateISO: string; // YYYY-MM-DD
   monthIndex: number; // 0..11
-  category?: Category;
+
+  // Расходы
+  category?: ExpenseCategory;
   subcategory?: string;
+
+  // Доходы
+  incomeCategory?: IncomeCategory;
+
   comment?: string;
   title: string; // что показываем в таблице
   amount: number;
@@ -42,7 +57,7 @@ const MONTHS = [
   "Декабрь",
 ];
 
-const CATEGORY_MAP: Record<Category, string[]> = {
+const CATEGORY_MAP: Record<ExpenseCategory, string[]> = {
   "Операционные расходы": [
     "Зарплаты и компенсации",
     "Аренда, коммунальные услуги",
@@ -74,6 +89,16 @@ const CATEGORY_MAP: Record<Category, string[]> = {
     "Прочие нестандартные расходы",
   ],
 };
+
+const INCOME_CATEGORIES: IncomeCategory[] = [
+  "Доход по основной деятельности",
+  "Инвестиционных доход",
+  "Доход от аренды",
+  "Проценты по депозитам",
+  "Доход (штрафы и компенсации)",
+  "Одноразовый доход от продажи активов или оборудования",
+  "Доход от проектных услуг",
+];
 
 function pad2(n: number) {
   return String(n).padStart(2, "0");
@@ -119,9 +144,7 @@ function formatBYN(n: number) {
   })} BYN`;
 }
 
-function SelectWithArrow(
-  props: React.SelectHTMLAttributes<HTMLSelectElement>
-) {
+function SelectWithArrow(props: SelectHTMLAttributes<HTMLSelectElement>) {
   return (
     <div className="relative">
       <select
@@ -132,7 +155,6 @@ function SelectWithArrow(
           props.className ?? "",
         ].join(" ")}
       />
-      {/* стрелка не у края: right-6 + pr-12 */}
       <div className="pointer-events-none absolute inset-y-0 right-6 flex items-center">
         <svg
           className="h-4 w-4 text-gray-700"
@@ -172,7 +194,9 @@ export default function AppPage() {
       type: "Доход",
       dateISO: "2026-01-05",
       monthIndex: 0,
-      title: "Продажи",
+      incomeCategory: "Доход по основной деятельности",
+      comment: "Продажи",
+      title: "Доход по основной деятельности — Продажи",
       amount: 5400,
     },
   ]);
@@ -195,7 +219,7 @@ export default function AppPage() {
   // ---------- Modal state (Расход) ----------
   const [isExpenseModalOpen, setIsExpenseModalOpen] = useState(false);
   const [dateText, setDateText] = useState("");
-  const [category, setCategory] = useState<Category>("Операционные расходы");
+  const [category, setCategory] = useState<ExpenseCategory>("Операционные расходы");
   const [subcategory, setSubcategory] = useState(
     CATEGORY_MAP["Операционные расходы"][0]
   );
@@ -276,6 +300,77 @@ export default function AppPage() {
 
     setItems((prev) => [...prev, newItem]);
     closeExpenseModal();
+  };
+
+  // ---------- Modal state (Доход) ----------
+  const [isIncomeModalOpen, setIsIncomeModalOpen] = useState(false);
+  const [incomeDateText, setIncomeDateText] = useState("");
+  const [incomeAmountText, setIncomeAmountText] = useState("");
+  const [incomeCategory, setIncomeCategory] = useState<IncomeCategory>(
+    INCOME_CATEGORIES[0]
+  );
+  const [incomeComment, setIncomeComment] = useState("");
+  const [incomeFormError, setIncomeFormError] = useState("");
+
+  const openIncomeModal = () => {
+    setIncomeFormError("");
+    setIsIncomeModalOpen(true);
+
+    const now = new Date();
+    const dd = pad2(now.getDate());
+    const mm = pad2(now.getMonth() + 1);
+    const yyyy = now.getFullYear();
+
+    setIncomeDateText(`${dd}.${mm}.${yyyy}`);
+    setIncomeAmountText("");
+    setIncomeCategory(INCOME_CATEGORIES[0]);
+    setIncomeComment("");
+  };
+
+  const closeIncomeModal = () => {
+    setIsIncomeModalOpen(false);
+    setIncomeFormError("");
+  };
+
+  const createIncome = () => {
+    setIncomeFormError("");
+
+    const parsed = parseDDMMYYYYToISO(incomeDateText);
+    if (!parsed.ok) {
+      setIncomeFormError(parsed.error);
+      return;
+    }
+
+    const amt = Number(String(incomeAmountText).replace(",", "."));
+    if (!Number.isFinite(amt) || amt <= 0) {
+      setIncomeFormError("Введите корректную сумму");
+      return;
+    }
+
+    const cat = incomeCategory;
+    if (!cat) {
+      setIncomeFormError("Выберите категорию доходов");
+      return;
+    }
+
+    const trimmedComment = incomeComment.trim();
+    const title = trimmedComment ? `${cat} — ${trimmedComment}` : cat;
+
+    const monthIdx = monthIndexFromISO(parsed.iso);
+
+    const newItem: Tx = {
+      id: String(Date.now()),
+      type: "Доход",
+      dateISO: parsed.iso,
+      monthIndex: monthIdx,
+      incomeCategory: cat,
+      comment: trimmedComment,
+      title,
+      amount: Math.round(amt * 100) / 100,
+    };
+
+    setItems((prev) => [...prev, newItem]);
+    closeIncomeModal();
   };
 
   const onLogout = async () => {
@@ -365,6 +460,7 @@ export default function AppPage() {
 
                 <button
                   type="button"
+                  onClick={openIncomeModal}
                   className="rounded-2xl border border-gray-200 bg-white px-4 py-2.5 text-[14px] font-semibold text-gray-900 shadow-sm hover:bg-gray-50 focus:outline-none focus:ring-4 focus:ring-gray-100 active:scale-[0.99]"
                 >
                   Добавить доход
@@ -496,12 +592,10 @@ export default function AppPage() {
                   <div className="mt-2">
                     <SelectWithArrow
                       value={category}
-                      onChange={(e) =>
-                        setCategory(e.target.value as Category)
-                      }
+                      onChange={(e) => setCategory(e.target.value as ExpenseCategory)}
                       className="w-full py-3"
                     >
-                      {(Object.keys(CATEGORY_MAP) as Category[]).map((c) => (
+                      {(Object.keys(CATEGORY_MAP) as ExpenseCategory[]).map((c) => (
                         <option key={c} value={c}>
                           {c}
                         </option>
@@ -510,7 +604,7 @@ export default function AppPage() {
                   </div>
                 </div>
 
-                {/* Subcategory (auto appears + auto selects first) */}
+                {/* Subcategory */}
                 <div className="md:col-span-1">
                   <label className="block text-[13px] font-medium text-gray-700">
                     Подкатегория
@@ -570,6 +664,131 @@ export default function AppPage() {
 
               <div className="mt-4 text-center text-[12px] text-gray-500">
                 Затрата будет добавлена в месяц, соответствующий выбранной дате.
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Income Modal */}
+      {isIncomeModalOpen && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 px-4"
+          onMouseDown={(e) => {
+            if (e.target === e.currentTarget) closeIncomeModal();
+          }}
+        >
+          <div className="w-full max-w-2xl overflow-hidden rounded-3xl border border-gray-200 bg-white shadow-xl">
+            <div className="flex items-start justify-between px-6 py-6">
+              <div>
+                <div className="text-[22px] font-semibold tracking-tight text-gray-950">
+                  Добавить доход
+                </div>
+                <div className="mt-2 text-[14px] text-gray-500">
+                  Минималистичная форма ввода
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={closeIncomeModal}
+                className="rounded-2xl border border-gray-200 bg-white px-4 py-2.5 text-[14px] font-medium text-gray-900 shadow-sm hover:bg-gray-50 focus:outline-none focus:ring-4 focus:ring-gray-100"
+              >
+                Закрыть
+              </button>
+            </div>
+
+            <div className="h-px bg-gray-200/70" />
+
+            <div className="px-6 py-6">
+              <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
+                {/* Date */}
+                <div>
+                  <label className="block text-[13px] font-medium text-gray-700">
+                    Дата
+                  </label>
+                  <input
+                    value={incomeDateText}
+                    onChange={(e) => setIncomeDateText(e.target.value)}
+                    placeholder="DD.MM.YYYY"
+                    className="mt-2 w-full rounded-2xl border border-gray-200 bg-white px-4 py-3 text-[14px] text-gray-900 placeholder:text-gray-400 shadow-sm outline-none transition focus:border-gray-300 focus:ring-4 focus:ring-gray-100"
+                  />
+                </div>
+
+                {/* Amount */}
+                <div>
+                  <label className="block text-[13px] font-medium text-gray-700">
+                    Сумма (BYN)
+                  </label>
+                  <input
+                    value={incomeAmountText}
+                    onChange={(e) => setIncomeAmountText(e.target.value)}
+                    inputMode="decimal"
+                    placeholder="0.00"
+                    className="mt-2 w-full rounded-2xl border border-gray-200 bg-white px-4 py-3 text-[14px] text-gray-900 placeholder:text-gray-400 shadow-sm outline-none transition focus:border-gray-300 focus:ring-4 focus:ring-gray-100"
+                  />
+                </div>
+
+                {/* Income category */}
+                <div className="md:col-span-2">
+                  <label className="block text-[13px] font-medium text-gray-700">
+                    Категория доходов
+                  </label>
+                  <div className="mt-2">
+                    <SelectWithArrow
+                      value={incomeCategory}
+                      onChange={(e) => setIncomeCategory(e.target.value as IncomeCategory)}
+                      className="w-full py-3"
+                    >
+                      {INCOME_CATEGORIES.map((c) => (
+                        <option key={c} value={c}>
+                          {c}
+                        </option>
+                      ))}
+                    </SelectWithArrow>
+                  </div>
+                </div>
+
+                {/* Comment */}
+                <div className="md:col-span-2">
+                  <label className="block text-[13px] font-medium text-gray-700">
+                    Комментарий
+                  </label>
+                  <textarea
+                    value={incomeComment}
+                    onChange={(e) => setIncomeComment(e.target.value)}
+                    placeholder="Добавьте пояснение к доходу"
+                    rows={3}
+                    className="mt-2 w-full resize-none rounded-2xl border border-gray-200 bg-white px-4 py-3 text-[14px] text-gray-900 placeholder:text-gray-400 shadow-sm outline-none transition focus:border-gray-300 focus:ring-4 focus:ring-gray-100"
+                  />
+                </div>
+              </div>
+
+              {incomeFormError ? (
+                <div className="mt-4 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-[14px] text-red-700">
+                  {incomeFormError}
+                </div>
+              ) : null}
+
+              <div className="mt-6 flex flex-col gap-3 sm:flex-row">
+                <button
+                  type="button"
+                  onClick={createIncome}
+                  className="flex-1 rounded-2xl bg-emerald-600 px-4 py-3 text-[14px] font-semibold text-white shadow-sm hover:bg-emerald-700 focus:outline-none focus:ring-4 focus:ring-emerald-100 active:scale-[0.99]"
+                >
+                  Создать
+                </button>
+                <button
+                  type="button"
+                  onClick={closeIncomeModal}
+                  className="flex-1 rounded-2xl border border-gray-200 bg-white px-4 py-3 text-[14px] font-semibold text-gray-900 shadow-sm hover:bg-gray-50 focus:outline-none focus:ring-4 focus:ring-gray-100 active:scale-[0.99]"
+                >
+                  Отменить
+                </button>
+              </div>
+
+              <div className="mt-4 text-center text-[12px] text-gray-500">
+                Доход будет добавлен в месяц, соответствующий выбранной дате.
               </div>
             </div>
           </div>
